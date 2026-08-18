@@ -1,26 +1,6 @@
-import { describe, it, expect, mock } from "bun:test";
-import * as actualCompat from "@earendil-works/pi-ai/compat";
-
-let seenInput: any;
-mock.module("@earendil-works/pi-ai/compat", () => ({
-  ...actualCompat,
-  stream: (_model: any, input: any) => {
-    seenInput = input;
-    return {
-      async *[Symbol.asyncIterator]() {},
-      async result() {
-        return {
-          stopReason: "stop",
-          content: [{ type: "text", text: "- summary" }],
-          usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-        };
-      },
-    };
-  },
-}));
-
-const { isUsableSummary, summarizeBatch } = await import("./summarizer.js");
-const { DEFAULT_CONFIG } = await import("./types.js");
+import { describe, it, expect } from "bun:test";
+import { isUsableSummary, summarizeBatch, summarizerThinkingOptions } from "./summarizer.js";
+import { DEFAULT_CONFIG } from "./types.js";
 
 describe("isUsableSummary", () => {
   it("accepts non-empty text that stopped normally", () => {
@@ -40,12 +20,28 @@ describe("isUsableSummary", () => {
 describe("summarizer prompt", () => {
   it("tells the model that an image marker is an image it cannot see", async () => {
     const model = { id: "m", provider: "p", name: "M" };
+    let seenInput: unknown;
     const ctx = {
       model,
       modelRegistry: {
         find: () => model,
         getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "k", headers: {} }),
         getProviderAuth: async () => undefined,
+        getProvider: () => ({
+          streamSimple: (_model: unknown, input: unknown) => {
+            seenInput = input;
+            return {
+              async *[Symbol.asyncIterator]() {},
+              async result() {
+                return {
+                  stopReason: "stop",
+                  content: [{ type: "text", text: "- summary" }],
+                  usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+                };
+              },
+            };
+          },
+        }),
       },
       ui: { notify() {} },
     } as any;
@@ -57,5 +53,15 @@ describe("summarizer prompt", () => {
     } as any;
     await summarizeBatch(batch, DEFAULT_CONFIG, ctx);
     expect(JSON.stringify(seenInput)).toContain("means the tool returned an image you cannot see");
+  });
+});
+
+describe("summarizerThinkingOptions", () => {
+  it("uses provider-neutral reasoning only when the model supports it", () => {
+    expect(summarizerThinkingOptions({ ...DEFAULT_CONFIG, summarizerThinking: "high" }, { reasoning: true })).toEqual({
+      reasoning: "high",
+    });
+    expect(summarizerThinkingOptions({ ...DEFAULT_CONFIG, summarizerThinking: "off" }, { reasoning: true })).toEqual({});
+    expect(summarizerThinkingOptions({ ...DEFAULT_CONFIG, summarizerThinking: "high" }, { reasoning: false })).toEqual({});
   });
 });
