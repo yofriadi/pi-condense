@@ -1,13 +1,13 @@
 ---
 name: release
-description: Use when asked to release, publish, bump the version, or cut a tag for jjuraszek/pi-condense.
+description: Use when asked to release, publish, bump the version, or cut a tag for yofriadi/pi-condense.
 ---
 
 # Release
 
-`pi-condense` publishes to **npm** (public, unscoped); the `pi-package` keyword
-lists it on `https://pi.dev/packages/pi-condense`. Users install with
-`pi install npm:pi-condense`.
+`@yofriadi/pi-condense` publishes to **npm** (public, scoped); the `pi-package` keyword
+lists it on `https://pi.dev/packages/@yofriadi/pi-condense`. Users install with
+`pi install npm:@yofriadi/pi-condense`.
 
 The release is **tag-driven and CI-executed**: pushing a `vX.Y.Z` tag triggers
 `.github/workflows/release.yml`, which gates on `tag == package.json`, runs
@@ -83,7 +83,7 @@ bash .agents/skills/release/scripts/release.sh verify 2.10.4
 ```
 
 Watches the release workflow to a terminal state, polls
-`npm view pi-condense@X.Y.Z version` until live, then checks the pi.dev catalog.
+`npm view @yofriadi/pi-condense@X.Y.Z version` until live, then checks the pi.dev catalog.
 Success means `npm view` printed the version. pi.dev lags npm by minutes to
 hours - report crawl lag, do not loop on it.
 
@@ -103,7 +103,7 @@ bash .agents/skills/release/scripts/release.sh sync-presets --apply    # rewrite
 ```
 
 Scans `settings.json` under `~/.pi` and this repo's parent tree. Same-form npm
-pins (`npm:pi-condense@<old>`) are bumped; git-tag pins and stale `pi-context-prune`
+pins (`npm:@yofriadi/pi-condense@<old>`) are bumped; git-tag pins and stale `pi-context-prune`
 names are reported for manual migration, never auto-rewritten.
 
 ## Safety checks (enforced by the script)
@@ -124,6 +124,6 @@ names are reported for manual migration, never auto-rewritten.
 
 ## First-time npm setup (one-off)
 
-Register `pi-condense` as a trusted publisher on npmjs.com: Settings -> Trusted
-Publishing -> GitHub Actions publisher for repo `jjuraszek/pi-condense`, workflow
+Register `@yofriadi/pi-condense` as a trusted publisher on npmjs.com: Settings -> Trusted
+Publishing -> GitHub Actions publisher for repo `yofriadi/pi-condense`, workflow
 `release.yml`. Until then the publish step fails with 403.

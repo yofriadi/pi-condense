@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # ============================================================================
-# Release helper - shared skeleton across the jjuraszek pi-* repos.
-# Only the CONFIG block below differs between repos; keep the rest byte-identical
-# so the copies stay diffable.
+# Release helper for this fork.
+# The CONFIG block below identifies the package and repository; keep the
+# remaining release mechanics stable unless their behavior needs to change.
 #
 # Tag scheme: v<major>.<minor>.<patch>. package.json version mirrors the tag
 # without the leading "v". This script assigns the version and pushes the tag;
@@ -14,8 +14,8 @@ set -euo pipefail
 # ============================================================================
 
 # ---- CONFIG (per-repo; the ONLY block that differs between pi-* repos) ------
-PACKAGE_NAME="pi-condense"
-REPO_SLUG="jjuraszek/pi-condense"
+PACKAGE_NAME="@yofriadi/pi-condense"
+REPO_SLUG="yofriadi/pi-condense"
 FORMER_PACKAGE_NAME="pi-context-prune"   # pre-rename name; sync-presets flags stale pins
 TEST_CMD="bun test src/"
 CHANGELOG_HEADING='## [%s] - %s'         # printf: version, date; consume both %s (use %.0s to drop one)
