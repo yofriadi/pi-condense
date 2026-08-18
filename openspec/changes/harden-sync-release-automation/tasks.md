@@ -11,9 +11,9 @@
 
 ## 3. Monorepo consumer and reproducibility
 
-- [ ] 3.1 Replace the direct-upstream `update:pi-condense` wrapper with a guarded `pi-condense-fork local/main --squash` consumer that runs post-pull G1–G4.
-- [ ] 3.2 Regenerate `pnpm-lock.yaml` from a clean isolated monorepo worktree; review every changed importer against committed manifests and verify frozen installation/type checking.
-- [ ] 3.3 Pull the committed fork hardening change through the guarded subtree flow without direct package edits, validate exact fork-tree identity, and commit/push the monorepo consumer and lockfile changes.
+- [x] 3.1 Replace the direct-upstream `update:pi-condense` wrapper with a guarded `pi-condense-fork local/main --squash` consumer that runs post-pull G1–G4.
+- [x] 3.2 Regenerate `pnpm-lock.yaml` from a clean isolated monorepo worktree; reviewed the pi-condense, pi-mlflow, and pi-subagent-herdr importer reconciliation against committed manifests; frozen install and package typecheck passed in the clean worktree.
+- [x] 3.3 Pull the committed fork hardening change through the guarded subtree flow without direct package edits, validate exact fork-tree identity, and commit/push the monorepo consumer and lockfile changes.
 
 ## 4. Authenticated live verification
 
