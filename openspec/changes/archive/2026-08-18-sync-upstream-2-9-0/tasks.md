@@ -30,7 +30,7 @@
 - [x] 4.1 CHANGELOG sync entry under `Unreleased` (includes: synced to upstream v2.9.0; `summarizer-fallback-model` unimplemented 0/21, fork `local/main` is its new base)
 - [x] 4.2 `openspec validate --all` clean (in the fork)
 - [x] 4.3 Sync the `upstream-sync` delta into `openspec/specs/upstream-sync/spec.md` (openspec-sync-specs skill) so the durable capability exists as a spec, not only as an archived delta
-- [ ] 4.3b `openspec archive sync-upstream-2-9-0` (in the fork; does NOT archive `summarizer-fallback-model` — it stays active)
+- [x] 4.3b `openspec archive sync-upstream-2-9-0` (in the fork; does NOT archive `summarizer-fallback-model` — it stays active)
 - [ ] 4.4 Commit and push fork (`git push origin local/main`; first push, fast-forward)
 
 ## 5. Phase 4 — monorepo consumption (first pull = re-baseline)
