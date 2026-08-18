@@ -44,7 +44,7 @@
     "extensions": [
       "./index.ts"
     ],
-    "image": "https://raw.githubusercontent.com/yofriadi/pi-condense/main/pi-condense.png"
+    "image": "https://raw.githubusercontent.com/yofriadi/pi-condense/local/main/pi-condense.png"
   },
   "funding": {
     "type": "buymeacoffee",

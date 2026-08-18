@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/yofriadi/pi-condense/main/pi-condense.png" alt="pi-condense" width="180">
+  <img src="https://raw.githubusercontent.com/yofriadi/pi-condense/local/main/pi-condense.png" alt="pi-condense" width="180">
 </p>
 
 # pi-condense

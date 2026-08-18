@@ -16,9 +16,9 @@ set -euo pipefail
 # ---- CONFIG (per-repo; the ONLY block that differs between pi-* repos) ------
 PACKAGE_NAME="@yofriadi/pi-condense"
 REPO_SLUG="yofriadi/pi-condense"
-FORMER_PACKAGE_NAME="pi-context-prune"   # pre-rename name; sync-presets flags stale pins
+RELEASE_BRANCH="local/main"
+LEGACY_PACKAGE_NAMES="pi-condense,pi-context-prune"  # migrate versioned unscoped npm pins
 TEST_CMD="bun test src/"
-CHANGELOG_HEADING='## [%s] - %s'         # printf: version, date; consume both %s (use %.0s to drop one)
 # ----------------------------------------------------------------------------
 
 RELEASE_WORKFLOW="release.yml"
@@ -33,9 +33,8 @@ Commands:
   propose                 Show commits since the last tag and a heuristic bump
                           level. Advisory only; no changes. The user picks.
   current                 Tag the version already in package.json (no bump).
-  patch|minor|major       Promote CHANGELOG "## [Unreleased]" to the new
-                          version, bump package.json, commit "Release <version>",
-                          run ${TEST_CMD}, tag, push main + tag.
+  patch|minor|major       Bump package.json, commit "Release <version>", run
+                          ${TEST_CMD}, tag, push ${RELEASE_BRANCH} + tag.
   verify [X.Y.Z]          Monitor the release workflow, then poll npm and the
                           pi.dev catalog for the version (default: package.json).
   sync-presets            Report pins of ${PACKAGE_NAME} in pi settings.json
@@ -114,53 +113,13 @@ require_clean_tree() {
   fi
 }
 
-require_main() {
+require_release_branch() {
   local branch
   branch="$(git branch --show-current)"
-  if [[ "$branch" != "main" ]]; then
-    echo "error: releases run from main (on '$branch')" >&2
+  if [[ "$branch" != "$RELEASE_BRANCH" ]]; then
+    echo "error: releases run from ${RELEASE_BRANCH} (on '$branch')" >&2
     exit 1
   fi
-}
-
-# Accepts "## [Unreleased]" or "## Unreleased".
-has_unreleased() {
-  grep -qiE '^## \[?unreleased\]?\s*$' CHANGELOG.md
-}
-
-changelog_top_version() {
-  grep -m1 -oE '^## \[?v?[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true
-}
-
-# Ensures CHANGELOG.md's top versioned heading is $1. Promotes an Unreleased
-# section in place (heading only; body untouched) and stages the file; the
-# section must hold at least one non-heading, non-blank line before the next
-# "## ". Returns 1 if there is nothing to promote and the top heading is not $1.
-prepare_changelog() {
-  local version="$1" heading
-  if has_unreleased; then
-    heading="$(printf "$CHANGELOG_HEADING" "$version" "$(date +%F)")"
-    HEADING="$heading" node -e '
-      const fs = require("fs");
-      const src = fs.readFileSync("CHANGELOG.md", "utf8");
-      const eol = src.includes("\r\n") ? "\r\n" : "\n";
-      const lines = src.split(eol);
-      const i = lines.findIndex((l) => /^## \[?unreleased\]?\s*$/i.test(l));
-      const body = lines.slice(i + 1).findIndex((l) => l.trim() !== "" && !/^#/.test(l));
-      const next = lines.slice(i + 1).findIndex((l) => /^## /.test(l));
-      if (body === -1 || (next !== -1 && body > next)) {
-        console.error("error: CHANGELOG.md Unreleased section is empty"); process.exit(1);
-      }
-      lines[i] = process.env.HEADING;
-      fs.writeFileSync("CHANGELOG.md", lines.join(eol));
-    '
-    run git add CHANGELOG.md
-    return 0
-  fi
-  [[ "$(changelog_top_version)" == "$version" ]] && return 0
-  echo "error: CHANGELOG.md has no '## [Unreleased]' section and its top heading is not ${version}" >&2
-  echo "       add the release notes under '## [Unreleased]', commit, and re-run" >&2
-  return 1
 }
 
 # ---- propose ---------------------------------------------------------------
@@ -216,22 +175,15 @@ cmd_release() {
     echo "  new tag:         $tag"
     echo "  branch:          $(git branch --show-current)"
     [[ -n "$(git status --porcelain)" ]] && echo "  note: tree not clean; a real release stops until clean."
-    if has_unreleased; then
-      echo "  would promote CHANGELOG '## [Unreleased]' to '$(printf "$CHANGELOG_HEADING" "$new" "$(date +%F)")'"
-    elif [[ "$(changelog_top_version)" != "$new" ]]; then
-      echo "  note: CHANGELOG has no Unreleased section and top heading is not $new; a real release stops."
-    fi
-    [[ "$mode" != "current" ]] && echo "  would set package.json to $new"
-    if [[ "$mode" != "current" ]] || has_unreleased; then echo "  would commit 'Release $new'"; fi
+    [[ "$mode" != "current" ]] && echo "  would set package.json to $new and commit 'Release $new'"
     [[ "$SKIP_TESTS" -eq 0 ]] && echo "  would run ${TEST_CMD} before tagging"
-    echo "  would create annotated tag $tag and push main + tag to origin"
+    echo "  would create annotated tag $tag and push ${RELEASE_BRANCH} + tag to origin"
     echo "  then monitor the workflow and verify npm + pi.dev"
     exit 0
   fi
 
-  require_main
+  require_release_branch
   require_clean_tree
-  prepare_changelog "$new"
 
   if [[ "$mode" != "current" ]]; then
     node -e '
@@ -241,8 +193,6 @@ cmd_release() {
       fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
     ' "$new"
     run git add package.json
-  fi
-  if [[ -n "$(git diff --cached --name-only)" ]]; then
     run git commit -m "Release ${new}"
   fi
 
@@ -252,7 +202,7 @@ cmd_release() {
   fi
 
   run git tag -a "$tag" -m "Release ${new}"
-  run git push origin main
+  run git push origin "$RELEASE_BRANCH"
   run git push origin "$tag"
 
   sha="$(git rev-parse HEAD)"
@@ -354,35 +304,40 @@ cmd_sync_presets() {
   echo "  apply mode: $([[ "$APPLY" -eq 1 ]] && echo "ON (rewriting same-form npm pins)" || echo "off (report only)")"
   echo
 
-  APPLY="$APPLY" PACKAGE_NAME="$PACKAGE_NAME" FORMER_PACKAGE_NAME="$FORMER_PACKAGE_NAME" \
+  APPLY="$APPLY" PACKAGE_NAME="$PACKAGE_NAME" LEGACY_PACKAGE_NAMES="$LEGACY_PACKAGE_NAMES" \
   REPO_SLUG="$REPO_SLUG" VERSION="$version" \
   node -e '
     const fs = require("fs");
-    const { APPLY, PACKAGE_NAME, FORMER_PACKAGE_NAME, REPO_SLUG, VERSION } = process.env;
+    const { APPLY, PACKAGE_NAME, LEGACY_PACKAGE_NAMES, REPO_SLUG, VERSION } = process.env;
     const files = process.argv.slice(1);
-    const npmPin = new RegExp(`^npm:${PACKAGE_NAME}@`);
-    const gitPin = new RegExp(`^git:github\\.com/${REPO_SLUG}@`);
-    const formerNpm = new RegExp(`^npm:${FORMER_PACKAGE_NAME}@`);
-    const formerGit = new RegExp(`github\\.com/[^/]+/${FORMER_PACKAGE_NAME}@`);
+    const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const scopedNpmPin = new RegExp(`^npm:${escapeRegExp(PACKAGE_NAME)}@`);
+    const gitPin = new RegExp(`^git:github\\.com/${escapeRegExp(REPO_SLUG)}@`);
+    const legacyPackageNames = LEGACY_PACKAGE_NAMES.split(",").filter(Boolean);
+    const legacyNpmPins = legacyPackageNames.map((name) => new RegExp(`^npm:${escapeRegExp(name)}@`));
+    const legacyGitPin = new RegExp(`^git:github\\.com/[^/]+/(${legacyPackageNames.map(escapeRegExp).join("|")})@`);
     let touched = 0;
     for (const file of files) {
       let raw, data;
       try { raw = fs.readFileSync(file, "utf8"); data = JSON.parse(raw); }
-      catch (e) { console.log(`  ${file}\n    skip: not parseable JSON (${e.message})`); continue; }
+      catch (e) { console.log(`  ${file}\\n    skip: not parseable JSON (${e.message})`); continue; }
       const pkgs = Array.isArray(data.packages) ? data.packages : [];
       const notes = [];
       let changed = false;
       pkgs.forEach((entry, i) => {
         if (typeof entry !== "string") return;
-        if (npmPin.test(entry)) {
-          const want = `npm:${PACKAGE_NAME}@${VERSION}`;
+        const want = `npm:${PACKAGE_NAME}@${VERSION}`;
+        if (scopedNpmPin.test(entry)) {
           if (entry === want) { notes.push(`already ${want}`); return; }
           notes.push(`bump ${entry} -> ${want}`);
           if (APPLY === "1") { pkgs[i] = want; changed = true; }
+        } else if (legacyNpmPins.some((pattern) => pattern.test(entry))) {
+          notes.push(`migrate ${entry} -> ${want}`);
+          if (APPLY === "1") { pkgs[i] = want; changed = true; }
         } else if (gitPin.test(entry)) {
-          notes.push(`git pin ${entry}: migrate to npm:${PACKAGE_NAME}@${VERSION} (manual)`);
-        } else if (formerNpm.test(entry) || formerGit.test(entry)) {
-          notes.push(`stale name ${entry}: rename to ${PACKAGE_NAME} (manual)`);
+          notes.push(`git pin ${entry}: migrate to ${want} (manual)`);
+        } else if (legacyGitPin.test(entry)) {
+          notes.push(`legacy git pin ${entry}: migrate to ${want} (manual)`);
         }
       });
       if (notes.length === 0) continue;
