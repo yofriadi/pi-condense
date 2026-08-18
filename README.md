@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jjuraszek/pi-condense/main/pi-condense.png" alt="pi-condense" width="180">
+  <img src="https://raw.githubusercontent.com/yofriadi/pi-condense/main/pi-condense.png" alt="pi-condense" width="180">
 </p>
 
 # pi-condense
@@ -53,7 +53,7 @@ flowchart LR
 ## Quick example
 
 ```bash
-pi install npm:pi-condense
+pi install npm:@yofriadi/pi-condense
 ```
 
 ```bash
@@ -123,37 +123,37 @@ These are most informative for long single-chain sessions where Phase 3 (chain c
 
 ## Install
 
-Published to npm as [`pi-condense`](https://www.npmjs.com/package/pi-condense).
+Published to npm as [`@yofriadi/pi-condense`](https://www.npmjs.com/package/@yofriadi/pi-condense).
 
 **User scope** (all repos under your pi profile):
 
 ```bash
-pi install npm:pi-condense
+pi install npm:@yofriadi/pi-condense
 ```
 
 **Project scope** (current repo only, committable via `.pi/settings.json`):
 
 ```bash
-pi install -l npm:pi-condense
+pi install -l npm:@yofriadi/pi-condense
 ```
 
 **Try without installing**:
 
 ```bash
-pi -e npm:pi-condense
+pi -e npm:@yofriadi/pi-condense
 ```
 
 **From a local checkout** (for hacking on the extension itself):
 
 ```bash
-git clone git@github.com:jjuraszek/pi-condense.git ~/repos/pi-condense
+git clone git@github.com:yofriadi/pi-condense.git ~/repos/pi-condense
 cd ~/path/to/your/repo
 pi install -l ~/repos/pi-condense
 # or one-shot, no install:
 pi -e ~/repos/pi-condense/index.ts
 ```
 
-Pin a specific version with `npm:pi-condense@X.Y.Z`. Upgrade by re-running `pi install`. Remove with `pi remove pi-condense`. Once installed, the extension auto-loads on every `pi` invocation; no flags needed. See [CHANGELOG.md](CHANGELOG.md) for release history.
+Pin a specific version with `npm:@yofriadi/pi-condense@X.Y.Z`. Upgrade by re-running `pi install`. Remove with `pi remove @yofriadi/pi-condense`. Once installed, the extension auto-loads on every `pi` invocation; no flags needed. See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 By default the extension is **off**. `/pruner on` enables it and it stays enabled across sessions in the same pi agent directory.
 
@@ -167,6 +167,7 @@ Settings live under `contextPrune` in `<agent-dir>/settings.json` (`$PI_CODING_A
 | `summarizerModel` | `"default"` | Pin a cheap model instead of reusing your active one - see the plan-by-plan table in [doc/configuration.md](doc/configuration.md#choosing-a-summarizer-model) |
 | `pruneOn` | `agent-message` | Trigger mode - see Architecture above |
 | `autoBudgetThreshold` | `null` | Fraction (e.g. `0.8`) of the context window that force-flushes everything regardless of `pruneOn`; the trigger point is capped at 300k tokens |
+| `summarizerConcurrency` | `4` | Max simultaneous summarizer calls during a flush fan-out. `0` = unbounded (previous behavior) |
 | `protectedTools` / `protectedPaths` | `[]` / `["**/skills/**/*.md"]` | Tool names / path globs that are never pruned |
 | `spillThreshold` | `65536` | Chars above which a single oversized result spills straight to a sidecar file |
 

@@ -3,9 +3,15 @@
 Keep-a-Changelog style (`## [X.Y.Z] - <date>`, newest first), matching sibling
 pi packages (e.g. [`pi-cohort`](https://github.com/jjuraszek/pi-cohort/blob/main/CHANGELOG.md)).
 
-Published to npm as [`pi-condense`](https://www.npmjs.com/package/pi-condense) (`pi install npm:pi-condense`).
+Published to npm as [`@yofriadi/pi-condense`](https://www.npmjs.com/package/@yofriadi/pi-condense) (`pi install npm:@yofriadi/pi-condense`).
 Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which runs the tests and
 publishes via OIDC trusted publishing. See `.agents/skills/release/SKILL.md`.
+
+## [Unreleased]
+
+## [2.9.1] - 2026-08-12
+
+- **Summarizer flush pacing (behavioral default change: fan-out width `N` → `4`).** A budget auto-flush drains the whole pending backlog in one fan-out, and `summarizeBatches` previously fired every batch's LLM call at once through an unbounded `Promise.all` - an observed 34-batch flush tripped provider rate limiting (`Cloud Code Assist API error (429): Resource has been exhausted`), and the resulting transients flipped the configured `summarizerModel` into sticky session-model fallback for the rest of the flush. The fan-out now runs a bounded worker pool of `contextPrune.summarizerConcurrency` workers (default `4`; **`0` restores the previous unbounded behavior**), with results still index-aligned and per-batch progress semantics unchanged. Rate-limit-shaped failures (HTTP 429, `resource has been exhausted`, quota/rate-limit/overloaded wording, server retry-delay phrases) are additionally retried **in place on the same model** with bounded backoff (2 extra attempts, 2s exponential base, 30s per-wait cap - internal constants, not user config; an over-cap server delay short-circuits straight to the existing transient/fallback path), and a per-fan-out rate-limit gate coordinates a shared backoff window across the pool. Pacing is silent (no new notifications) and sits below the fallback controller, whose behavior and wording are untouched. New `/pruner` settings overlay row (`1` / `2` / `4 (default)` / `8` / `0 (unbounded)`); documented in README, `doc/configuration.md`, and PRUNING.md.
 
 ## [2.9.0] - 2026-08-14
 
