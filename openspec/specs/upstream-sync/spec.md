@@ -22,7 +22,7 @@ The extension SHALL be consumed in the monorepo as a git subtree of a fork branc
 
 ### Requirement: Protected local surfaces
 
-The following SHALL be treated as local-only and MUST NOT be overwritten by a sync: `src/summarizer-pacing.ts`, `src/summarizer-pacing.test.ts`, `ANTIGRAVITY.md`, `tsconfig.json`, the `.pi/` tree, the `openspec/` tree, and the `package.json` identity/typecheck fields (`name`, `publishConfig`, `scripts.typecheck`, and the TypeScript 7.0.2 / Node 22 type development dependencies). `src/summarizer.ts`, `src/summarizer-wiring.test.ts`, and `src/reload-rearm.integration.test.ts` carry protected invariants rather than whole-file ownership: host-registry dispatch through `ctx.modelRegistry.getProvider().streamSimple`, no `pi-ai/compat` import or mock, and no `reasoningEffort` option. Upstream may legitimately modify these files; a sync reconciles their changes while retaining the invariants. `src/summarizer-fallback.ts` and `src/summarizer-fallback.test.ts` remain upstream-owned until the local fallback change is implemented.
+The following SHALL be treated as local-only and MUST NOT be overwritten by a sync: `src/summarizer-pacing.ts`, `src/summarizer-pacing.test.ts`, `ANTIGRAVITY.md`, `tsconfig.json`, the `.pi/` tree, the `openspec/` tree, and the scoped release identity. The scoped release identity consists of `package.json` fields `name: "@yofriadi/pi-condense"`, `version` under the local version policy, `publishConfig.access: "public"`, `repository`, `homepage`, `bugs`, `pi.image` (branch-qualified to `local/main`), `scripts.typecheck`, and TypeScript 7.0.2 / Node 22 development dependencies; the scoped installation strings in `README.md` and `CHANGELOG.md`; `.agents/skills/release/SKILL.md`; `.agents/skills/release/scripts/release.sh` values `PACKAGE_NAME="@yofriadi/pi-condense"`, `REPO_SLUG="yofriadi/pi-condense"`, and `RELEASE_BRANCH="local/main"`; and `local/main` as the fork default and only release branch. `src/summarizer.ts`, `src/summarizer-wiring.test.ts`, and `src/reload-rearm.integration.test.ts` carry protected invariants rather than whole-file ownership: host-registry dispatch through `ctx.modelRegistry.getProvider().streamSimple`, no `pi-ai/compat` import or mock, and no `reasoningEffort` option. Upstream may legitimately modify these files; a sync reconciles their changes while retaining the invariants. `src/summarizer-fallback.ts` and `src/summarizer-fallback.test.ts` remain upstream-owned until the local fallback change is implemented.
 
 #### Scenario: Sync attempts to overwrite a protected file
 
@@ -75,7 +75,7 @@ Every sync SHALL run the gates in the fork and rerun the applicable gates in the
 2. G1 forbids imports or mocks from `@earendil-works/pi-ai/compat` and `reasoningEffort:` option assignments under `src/`. The `not.toHaveProperty("reasoningEffort")` regression assertion is allowed.
 3. G2 runs targeted summarizer tests; G3 runs the complete suite.
 4. G4 runs `bun run typecheck` through the package-owned TypeScript 7 project configuration.
-5. G5 verifies the protected-path allowlist and that the required local paths exist with local content.
+5. G5 verifies the protected-path allowlist, that required local paths exist with local content, and the exact scoped identity, branch-qualified image URLs, release-script identity constants, test PR target, and GitHub default branch.
 6. G6 verifies exported patch completeness and the sync-introduced allowlist.
 
 #### Scenario: Current TypeScript runs without parent-config leakage

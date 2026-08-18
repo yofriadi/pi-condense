@@ -19,10 +19,12 @@ The release is **tag-driven and CI-executed**: pushing a `vX.Y.Z` tag triggers
 **OIDC trusted publishing**. The local flow only assigns the version and pushes
 the tag; **never run `npm publish` by hand.**
 
+Releases are cut only from `local/main`, the fork's default branch; never release the upstream-tracking `main` branch.
+
 All mechanics live in `.agents/skills/release/scripts/release.sh`. This skill is
 the judgment layer around it: propose the level, get approval, then run the
-script. The script's config header is the only part that differs from the
-sibling pi-* copies (`pi-cohort`, `pi-gauntlet`) - keep them in sync.
+script. Its configuration records this fork's scoped npm identity and
+`local/main` publication branch.
 
 ## Boundaries
 
@@ -72,9 +74,9 @@ bash .agents/skills/release/scripts/release.sh current    # version already hand
 bash .agents/skills/release/scripts/release.sh --dry-run minor   # preview, no changes
 ```
 
-The script verifies `main` + a clean tree, bumps `package.json`, commits
+The script verifies `local/main` + a clean tree, bumps `package.json`, commits
 `Release <version>`, runs `bun test src/` as a pre-flight, creates the
-annotated tag, pushes `main` + the tag, then chains straight into verification.
+annotated tag, pushes `local/main` + the tag, then chains straight into verification.
 `current` tags the version already in `package.json` (commit your work first).
 
 ### 4. Verification (the script runs this automatically after a push)
@@ -100,16 +102,17 @@ bash .agents/skills/release/scripts/release.sh sync-presets            # report 
 bash .agents/skills/release/scripts/release.sh sync-presets --apply    # rewrite same-form npm pins
 ```
 
-Scans `settings.json` under `~/.pi` and this repo's parent tree. Same-form npm
-pins (`npm:@yofriadi/pi-condense@<old>`) are bumped by `--apply`; git-tag pins and stale
-`pi-context-prune` names are reported for manual migration, never auto-rewritten.
+Scans `settings.json` under `~/.pi` and this repo's parent tree. Same-form scoped
+pins (`npm:@yofriadi/pi-condense@<old>`) are bumped by `--apply`; versioned unscoped
+pins (`npm:pi-condense@<old>` and `npm:pi-context-prune@<old>`) migrate to the scoped
+package under `--apply`. Git pins are reported for manual migration.
 
 ## Safety checks
 
 Refuse to proceed unless ALL hold; report which failed, do not silently fix:
 
 - working tree clean (for `current`, commit feature work first)
-- releasing from `main`
+- releasing from `local/main`
 - the target `vX.Y.Z` tag does not already exist (the script enforces this)
 - `bun test src/` passes (the script's pre-flight; also the CI gate)
 
@@ -117,7 +120,7 @@ Refuse to proceed unless ALL hold; report which failed, do not silently fix:
 
 - about to run `npm publish` locally - push the tag, let CI publish
 - picked the bump level without user confirmation
-- reported success without `npm view pi-condense@X.Y.Z` printing the version
+- reported success without `npm view @yofriadi/pi-condense@X.Y.Z` printing the version
 - retrying the pi.dev fetch "until it appears" - that's crawl lag, not failure
 - editing a `~/.pi/**/settings.json` without its own explicit approval
 - `package.json` version and the tag are not the identical `X.Y.Z` string
