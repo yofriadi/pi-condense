@@ -70,3 +70,13 @@ Upstream 2.10.4 rewrote the file (issue tracker section, release write-gate carv
 ## Decision 9: Monorepo consumption
 
 `pnpm update:pi-condense` runs the squash subtree pull in a detached candidate worktree, regenerates the root lockfile (the consumed `package.json` version changed), and fast-forwards only after frozen install plus root/G1–G4 pass. The monorepo tree must be clean repo-wide first, so unrelated in-flight work is stashed and restored around the pull. The duplicate active `openspec/changes/harden-sync-release-automation/` directory in the monorepo disappears with the pull because the fork archived it.
+
+The pull is **not** conflict-free this time, because the monorepo carried three divergences the model forbids; each is resolved once and does not recur:
+
+| Conflict | Cause | Resolution |
+|---|---|---|
+| `packages/pi-condense/package.json` (content) | the monorepo's out-of-band `3.9.1` against the fork's policy `2.11.3` | take the fork side |
+| `packages/pi-condense/src/proactive-tiers.integration.test.ts` (add/add) | the file existed monorepo-side first and the fork's copy carries the skip guard | take the fork side |
+| `packages/pi-condense/.pi/gauntlet-overrides.md` (modify/delete) | the monorepo deletes the whole `.pi/` tree while the fork localizes it (Decision 8) | keep the monorepo deletion (`git rm`) |
+
+The `.pi/` case is the only recurring one: the fork owns `.pi/` and the monorepo strips it, so any future fork edit under `.pi/**` re-opens a modify/delete conflict that the monorepo resolves by keeping the deletion. Everything else the fork changed lands clean because the ported commits made the two trees identical first.

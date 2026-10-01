@@ -42,11 +42,11 @@
 
 ## 5. Phase 4 — monorepo consumption (runs after the fork push)
 
-- [ ] 5.1 Stash unrelated in-flight monorepo work so the tree is clean repo-wide (G0)
-- [ ] 5.2 `pnpm update:pi-condense` — squash subtree pull from `pi-condense-fork/local/main` in a detached candidate, root lockfile regenerated for the consumed manifest change, frozen install, G1–G4 from `packages/pi-condense`, root `pnpm run check`, then fast-forward
-- [ ] 5.3 Monorepo-side G5: protected paths present with local content, no upstream reverts; `.pi/` stays deleted monorepo-side; the duplicate active automation change directory is gone
-- [ ] 5.4 Restore the stashed unrelated work and verify it came back intact
-- [ ] 5.5 Tag the fork `subtree-v2.11.2+local` at the consumed tip after the monorepo push
+- [x] 5.1 Stash unrelated in-flight monorepo work so the tree is clean repo-wide (G0)
+- [x] 5.2 Squash subtree pull from `pi-condense-fork/local/main` in a detached candidate worktree, resolving the three one-time monorepo divergences (see design Decision 9), then root lockfile regeneration, frozen install, G1–G4 from `packages/pi-condense`, root `pnpm run check`, and the caller fast-forward (`pnpm update:pi-condense` stops at conflicts by design, so the candidate flow was driven by hand) from `pi-condense-fork/local/main` in a detached candidate, root lockfile regenerated for the consumed manifest change, frozen install, G1–G4 from `packages/pi-condense`, root `pnpm run check`, then fast-forward
+- [x] 5.3 Monorepo-side G5: protected paths present with local content, no upstream reverts; `.pi/` stays deleted monorepo-side; the duplicate active automation change directory is gone
+- [x] 5.4 Restore the stashed unrelated work and verify it came back intact
+- [x] 5.5 Tag the fork `subtree-v2.11.2+local` at the consumed tip
 
 ## 6. Gates reference
 
