@@ -239,6 +239,9 @@ async function runAttempt(
 
     const response = await responseStream.result();
     reportTextProgress(response);
+    // Bill every attempt that consumed tokens — including the aborted, errored,
+    // and unusable responses handled below — before an early return drops it.
+    if (response.usage) options.onUsage?.(response, options.usageNote ?? "summarizer call");
     // stopReason "aborted" means the provider cut the stream short (e.g. signal
     // fired just before the final chunk). Treat identically to the signal check
     // above — throw so the catch below can detect options.signal.aborted.
@@ -436,7 +439,11 @@ export async function summarizeBatch(
   const serialized = serializeBatchForSummarizer(batch);
   const userMessage =
     SYSTEM_PROMPT + "\n\n<tool-call-batch>\n" + serialized + "\n</tool-call-batch>";
-  return runSummarization(userMessage, config, ctx, options);
+  const count = batch.toolCalls.length;
+  return runSummarization(userMessage, config, ctx, {
+    ...options,
+    usageNote: `summarizer call: ${count} tool call${count === 1 ? "" : "s"} (turn ${batch.turnIndex})`,
+  });
 }
 
 /**
@@ -454,7 +461,7 @@ export async function summarizeRange(
 ): Promise<SummarizeResult | null> {
   const userMessage =
     RANGE_SYSTEM_PROMPT + "\n\n<sub-task-summaries>\n" + perBatchSummaryText + "\n</sub-task-summaries>";
-  return runSummarization(userMessage, config, ctx, options);
+  return runSummarization(userMessage, config, ctx, { ...options, usageNote: "chain range fusion" });
 }
 
 /**
@@ -501,6 +508,7 @@ export async function summarizeBatches(
         signal: options.signal,
         controller: options.controller,
         pacing,
+        onUsage: options.onUsage,
         onTextProgress: (receivedChars) => {
           options.onBatchTextProgress?.(0, 1, batches[0], receivedChars);
         },
@@ -528,6 +536,7 @@ export async function summarizeBatches(
           signal: options.signal,
           controller: options.controller,
           pacing,
+          onUsage: options.onUsage,
           onTextProgress: (receivedChars) => {
             options.onBatchTextProgress?.(index, batches.length, batch, receivedChars);
           },

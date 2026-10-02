@@ -42,6 +42,7 @@
  *     NOT a hidden side-channel. It makes an explicit LLM call from turn_end.
  */
 
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { FallbackController } from "./summarizer-fallback.js";
 import type { RateLimitGate } from "./summarizer-pacing.js";
 
@@ -940,6 +941,17 @@ export interface SummarizeBatchOptions {
   controller?: FallbackController;
   /** Internal rate-limit pacing seam (see SummarizerPacing). */
   pacing?: SummarizerPacing;
+  /**
+   * Called with every final provider response that carries usage, before
+   * stopReason handling — so aborted, errored, and unusable attempts that still
+   * consumed tokens are reported. `note` describes the call (see usageNote).
+   */
+  onUsage?: (response: AssistantMessage, note: string) => void;
+  /**
+   * Internal: what the call was for, passed to `onUsage`. Set by summarizeBatch
+   * and summarizeRange, which know their own input; callers leave it alone.
+   */
+  usageNote?: string;
 }
 
 /** Options for summarizeBatches() when callers want live per-batch text progress. */
@@ -959,6 +971,8 @@ export interface SummarizeBatchesOptions {
   controller?: FallbackController;
   /** Internal rate-limit pacing seam (see SummarizerPacing). */
   pacing?: SummarizerPacing;
+  /** Forwarded to every per-batch call; see SummarizeBatchOptions.onUsage. */
+  onUsage?: (response: AssistantMessage, note: string) => void;
 }
 
 /**

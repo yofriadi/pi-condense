@@ -255,6 +255,7 @@ function bootExtension(
   const commands = new Map<string, (args: string, ctx: any) => Promise<void>>();
   const notifications: string[] = [];
   const widgets: Array<{ id: string; content: unknown }> = [];
+  const usageAppended: Array<{ kind: string; provider: string; model: string; usage: any; note?: string }> = [];
 
   const pushPi = (type: string, data?: unknown) => {
     piAppended.push({ type, data });
@@ -294,6 +295,12 @@ function bootExtension(
       },
       getSessionDir: () => sessionDir,
       getSessionId: () => "test",
+      // Pi's real SessionManager records model-attributed spend here; the
+      // extension reaches it through src/usage-report.ts's structural type.
+      appendUsage(kind: string, provider: string, model: string, usage: any, note?: string) {
+        usageAppended.push({ kind, provider, model, usage, note });
+        return { id: "usage-entry" };
+      },
     },
     getContextUsage: () => ({ tokens: 600000, contextWindow: 1000000 }),
     model: { id: "m", provider: "p", name: "M" },
@@ -317,7 +324,7 @@ function bootExtension(
     },
   };
 
-  return { handlers, commands, notifications, widgets, ctx, pi, piAppended, sessionAppended, appended, branch };
+  return { handlers, commands, notifications, widgets, ctx, pi, piAppended, sessionAppended, appended, usageAppended, branch };
 }
 
 async function boot(options?: Parameters<typeof bootExtension>[0]) {
@@ -1830,5 +1837,80 @@ describe("context-hook hydration (load-order race)", () => {
 
     expect(after).toBeDefined();
     expect(tc1Text(after.messages)).toBe(tc1Text(before.messages));
+  });
+});
+
+// ── Summarizer usage reporting (Pi usage entries) ─────────────────────────
+//
+// The summarizer calls the provider directly, outside Pi's agent loop, so the
+// host never records that spend on its own. These cases drive a real flush and
+// assert the usage entries the extension appends — including one for an attempt
+// that failed after consuming tokens.
+
+describe("summarizer usage reporting", () => {
+  function usageStream(stopReason: "stop" | "error") {
+    return {
+      async *[Symbol.asyncIterator]() {},
+      async result() {
+        return stopReason === "stop"
+          ? { stopReason, content: [{ type: "text", text: "[[1:read]] summary" }], usage: USAGE, provider: "p", model: "m" }
+          : { stopReason, errorMessage: "simulated summarizer failure", content: [], usage: USAGE, provider: "p", model: "m" };
+      },
+    };
+  }
+
+  // One budget-triggered flush of a single long tool result. streamImpl is
+  // module-scoped and other suites reassign it without restoring, so this saves
+  // and restores it rather than relying on the default.
+  async function flushOneBatch(handlers: any, ctx: any, stopReason: "stop" | "error") {
+    const previous = streamImpl;
+    streamImpl = () => {
+      summarizerCalls++;
+      return usageStream(stopReason);
+    };
+    try {
+      await handlers.get("session_start")!({}, ctx);
+      await handlers.get("turn_end")!(
+        {
+          message: { role: "assistant", content: [{ type: "toolCall", id: "tc2", name: "read", arguments: {} }] },
+          toolResults: [
+            { role: "toolResult", toolCallId: "tc2", toolName: "read", content: [{ type: "text", text: "x".repeat(400) }], timestamp: Date.now() },
+          ],
+          turnIndex: 7,
+        },
+        ctx,
+      );
+      await handlers.get("message_end")!({ message: { role: "assistant", content: [{ type: "text", text: "done" }] } }, ctx);
+    } finally {
+      streamImpl = previous;
+    }
+  }
+
+  it("records a successful summarizer call as a context_prune usage entry", async () => {
+    const { handlers, ctx, usageAppended } = await boot();
+
+    await flushOneBatch(handlers, ctx, "stop");
+
+    expect(usageAppended.length).toBeGreaterThan(0);
+    expect(usageAppended[0].kind).toBe("context_prune");
+    expect(usageAppended[0].provider).toBe("p");
+    expect(usageAppended[0].model).toBe("m");
+    expect(usageAppended[0].usage.totalTokens).toBe(USAGE.totalTokens);
+    expect(usageAppended[0].note).toMatch(/^summarizer call: \d+ tool calls? \(turn \d+\)$/);
+  });
+
+  it("bills an attempt that failed after consuming tokens", async () => {
+    const { handlers, ctx, usageAppended, appended } = await boot();
+
+    await flushOneBatch(handlers, ctx, "error");
+
+    // The flush summarized nothing...
+    const metrics = appended.filter((e) => e.type === "context-prune-flush-metrics");
+    expect(metrics.length).toBeGreaterThan(0);
+    expect(metrics.every((m) => (m.data as any).outcome !== "summarized")).toBe(true);
+    // ...but the tokens it spent are still on the session's usage ledger.
+    expect(usageAppended.length).toBeGreaterThan(0);
+    expect(usageAppended[0].kind).toBe("context_prune");
+    expect(usageAppended[0].usage.totalTokens).toBe(USAGE.totalTokens);
   });
 });

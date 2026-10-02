@@ -109,6 +109,14 @@ Three metrics the pruner cannot yet reclaim - open-cycle thinking tokens, larges
 
 These are most informative for long single-chain sessions where Phase 3 (chain compression) never gets a closed chain to act on - see [PRUNING.md § Single-chain sessions](PRUNING.md#single-chain-sessions) for the limitation and config guidance, and [PRUNING.md § Reload rearm](PRUNING.md#reload-rearm) for how a reload with recoverable pending work re-arms the automatic flush trigger.
 
+### Summarizer spend (Pi `usage` entries)
+
+Every summarizer LLM call is appended to the session as a Pi `usage` entry with kind `context_prune`, so the host footer cost, `/session`, and pi-stats (>= 0.5.0, which reads Pi usage entries directly) all include what pruning costs. The summarizer calls the provider directly, outside the agent loop, so Pi does not record those calls on its own.
+
+The entry is written before the stop reason is evaluated, so an attempt that aborted, errored, or produced an unusable summary is still billed when it consumed tokens - and the footer widget's `↑tokens ↓tokens $cost` suffix counts the same attempts, since both are fed from one seam (`src/usage-report.ts`). Each entry's note says what the call was for: `summarizer call: N tool calls (turn T)` for a batch, `chain range fusion` for a compressed chain's fused summary.
+
+The capability is feature-detected: `ctx.sessionManager` is typed read-only, and a host whose runtime manager has no `appendUsage` gets no entries and no error.
+
 ## When to use / when NOT to use
 
 **Use it for:** long coding or research sessions where tool output dominates the prompt; setups deliberately running a smaller/cheaper driver model; pi-cohort fan-outs or pi-gauntlet runs where cost compounds across many turns or many children.

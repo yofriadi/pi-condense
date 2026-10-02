@@ -18,6 +18,7 @@ import { loadConfig } from "./src/config.js";
 import { capImages, imageLimitFor } from "./src/image-cap.js";
 import { captureBatch, captureUnindexedBatchesFromSession, deriveLiveTurnIndex, groupBatchesByMode, projectBranchMessages } from "./src/batch-capture.js";
 import { summarizeBatch, summarizeBatches, summarizeRange } from "./src/summarizer.js";
+import { reportSummarizerUsage, type UsageSession } from "./src/usage-report.js";
 import { FallbackController } from "./src/summarizer-fallback.js";
 import { ToolCallIndexer } from "./src/indexer.js";
 import { pruneMessages } from "./src/pruner.js";
@@ -33,6 +34,7 @@ import type {
   ContextMetricsSnapshot,
   FlushMetricsEntry,
   FlushTrigger,
+  SummarizeBatchOptions,
 } from "./src/types.js";
 import {
   DEFAULT_CONFIG,
@@ -218,6 +220,21 @@ export default function (pi: ExtensionAPI) {
     return groupBatchesByMode(batches, currentConfig.value.batchingMode);
   };
 
+  // One seam for every summarizer LLM call: fold the spend into the local stats
+  // accumulator AND record it as a Pi usage entry, so the footer widget,
+  // /session, and pi-stats agree. It fires from runAttempt before stopReason
+  // handling, so aborted, errored, and unusable attempts that consumed tokens
+  // count too — which is why the old success-only statsAccum.add() calls at the
+  // flush sites are gone.
+  const summarizerUsageOptions = (ctx: ExtensionContext): Pick<SummarizeBatchOptions, "onUsage"> => ({
+    onUsage: (response, note) => {
+      if (response.usage) statsAccum.add(response.usage);
+      reportSummarizerUsage(ctx.sessionManager as unknown as UsageSession | undefined, response, note, (error) =>
+        safeNotify(ctx, `pruner: usage reporting failed — ${errorMessage(error)}`, "error")
+      );
+    },
+  });
+
   // Summarizes + indexes all pending batches.
   // When options.onProgress is provided batches are processed sequentially
   // (one LLM call each) so the caller can update per-row UI. Otherwise all
@@ -232,9 +249,11 @@ export default function (pi: ExtensionAPI) {
   const makeFuseRange = (ctx: any): ((text: string) => Promise<string | null>) | undefined => {
     if (!currentConfig.value.chainCompression.fuseRangeSummary) return undefined;
     return async (text: string) => {
-      const r = await summarizeRange(text, currentConfig.value, ctx, { controller: fallbackController });
+      const r = await summarizeRange(text, currentConfig.value, ctx, {
+        controller: fallbackController,
+        ...summarizerUsageOptions(ctx),
+      });
       if (r) {
-        statsAccum.add(r.usage);
         statsAccum.addRangesSummarized(1);
       }
       return r?.summaryText ?? null;
@@ -440,6 +459,7 @@ export default function (pi: ExtensionAPI) {
           const r = await summarizeBatch(batches[i], currentConfig.value, ctx, {
             signal: options.signal,
             controller: fallbackController,
+            ...summarizerUsageOptions(ctx),
             onTextProgress: (receivedChars) => {
               reportBatchTextProgress(i, batches.length, batches[i], receivedChars);
             },
@@ -464,6 +484,7 @@ export default function (pi: ExtensionAPI) {
             },
             signal: options.signal,
             controller: fallbackController,
+            ...summarizerUsageOptions(ctx),
           });
           for (let k = 0; k < nonTrivialIndices.length; k++) {
             results[nonTrivialIndices[k]] = ntResults[k];
@@ -539,7 +560,6 @@ export default function (pi: ExtensionAPI) {
         const shouldSkipOversized = summaryText.length > batchRawCharCount;
         wrappedSummaryLens[i] = summaryText.length;
 
-        statsAccum.add(result.usage);
         totalRawCharCount += batchRawCharCount + dedupRawChars;
         totalSummaryCharCount += summaryText.length;
         totalToolCallCount += batch.toolCalls.length + dedupCount;
