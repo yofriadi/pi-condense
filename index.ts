@@ -13,7 +13,7 @@
  * Usage:  pi -e .
  */
 
-import type { ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./src/config.js";
 import { capImages, imageLimitFor } from "./src/image-cap.js";
 import { captureBatch, captureUnindexedBatchesFromSession, deriveLiveTurnIndex, groupBatchesByMode, projectBranchMessages } from "./src/batch-capture.js";
@@ -98,6 +98,25 @@ export default function (pi: ExtensionAPI) {
   // no queue reconstruction; flushPending's own rescan is the data path.
   // Cleared on every non-concurrent flushPending invocation.
   let rearmedPending = false;
+
+  // Whether config, index, block refs, stats, and frontier have been rebuilt for
+  // the current session branch. session_start normally does this, but Pi
+  // dispatches session_start handlers in load order without awaiting them, so
+  // another extension can trigger an agent turn whose `context` event reaches us
+  // first. Without the fallback that turn is pruned against DEFAULT_CONFIG
+  // (enabled: false) and an empty index, i.e. it ships unpruned.
+  let hydrated = false;
+  const hydrateFromSession = async (ctx: ExtensionContext, loadSettings: boolean): Promise<void> => {
+    // loadSettings is false for session_tree so in-session /pruner overrides
+    // survive tree navigation.
+    if (loadSettings) currentConfig.value = await loadConfig();
+    indexer.reconstructFromSession(ctx);
+    // Rebuild the block-ref counter so new chain IDs don't collide with existing ones.
+    blockRefs.rebuildFrom(indexer.getChainEntries().map((e) => e.blockId));
+    statsAccum.reconstructFromSession(ctx);
+    frontier.reconstructFromSession(ctx);
+    hydrated = true;
+  };
 
   const computeMetricsSnapshot = (ctx: any): ContextMetricsSnapshot | undefined => {
     try {
@@ -799,24 +818,15 @@ export default function (pi: ExtensionAPI) {
 
   // ── session_start: restore config + index + stats ────────────────────────────────
   pi.on("session_start", async (_event, ctx) => {
-    // Load config from <agent-dir>/settings.json `contextPrune` key (honors PI_CODING_AGENT_DIR)
-    currentConfig.value = await loadConfig();
+    // Load config from <agent-dir>/settings.json `contextPrune` key (honors
+    // PI_CODING_AGENT_DIR) and rebuild the session-derived state from persisted
+    // session entries.
+    await hydrateFromSession(ctx, true);
 
-    // Rebuild in-memory index from persisted session entries
-    indexer.reconstructFromSession(ctx);
-
-    // Rebuild block-ref counter so new chain IDs don't collide with existing ones
-    blockRefs.rebuildFrom(indexer.getChainEntries().map((e) => e.blockId));
-
-    // Rebuild stats accumulator from persisted session entries
-    statsAccum.reconstructFromSession(ctx);
     fallbackController.reset();
     diagnostics.reset();
     supersede.activated.clear();
     supersede.floor = 0;
-
-    // Rebuild prune frontier from persisted session entries
-    frontier.reconstructFromSession(ctx);
 
     // Clear any batches queued before the session reload
     pendingBatches.length = 0;
@@ -853,13 +863,10 @@ export default function (pi: ExtensionAPI) {
 
   // Rebuild index and stats after tree navigation too (branch may have different history)
   pi.on("session_tree", async (_event, ctx) => {
-    indexer.reconstructFromSession(ctx);
-    blockRefs.rebuildFrom(indexer.getChainEntries().map((e) => e.blockId));
-    statsAccum.reconstructFromSession(ctx);
+    await hydrateFromSession(ctx, false);
     diagnostics.reset();
     supersede.activated.clear();
     supersede.floor = 0;
-    frontier.reconstructFromSession(ctx);
     // Pending batches belong to the old branch — discard them
     pendingBatches.length = 0;
     previousFraction = null;
@@ -1047,6 +1054,9 @@ export default function (pi: ExtensionAPI) {
 
   // ── context: prune summarized tool results from next LLM call ─────────────
   pi.on("context", async (event, ctx) => {
+    // A turn can start before our session_start handler has run (see
+    // hydrateFromSession); hydrate now rather than prune against cold state.
+    if (!hydrated) await hydrateFromSession(ctx, true);
     let messages = event.messages;
     let changed = false;
 

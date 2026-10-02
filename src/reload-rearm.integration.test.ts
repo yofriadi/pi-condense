@@ -213,12 +213,13 @@ function bootExtension(
     budgetTurnDelta?: number | null;
     frontierGapThresholdTokens?: number | null;
     showPruneStatusLine?: boolean;
+    enabled?: boolean;
   } = {},
 ) {
   const agentDir = mkdtempSync(join(tmpdir(), "pi-condense-rearm-"));
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const contextPruneSettings: any = {
-    enabled: true,
+    enabled: options.enabled ?? true,
     pruneOn: "agent-message",
     batchingMode: "agent-message",
     autoBudgetThreshold: options.autoBudgetThreshold === undefined ? 0.5 : options.autoBudgetThreshold,
@@ -1736,5 +1737,98 @@ describe("session-wide live turn index (#16)", () => {
     const fm = appended.filter((e) => e.type === "context-prune-flush-metrics");
     expect(fm.length).toBe(1);
     expect((fm[0].data as any).trigger).toBe("frontier-gap");
+  });
+});
+
+// ── Context-hook hydration (load-order race) ─────────────────────────────────
+//
+// Pi dispatches session_start handlers in extension load order without awaiting
+// them, so another extension can start an agent turn whose `context` event
+// reaches this extension first. These cases drive the `context` handler WITHOUT
+// running session_start, against a branch whose tool result was already
+// summarized in an earlier run.
+
+/** A resumed session: the message chain plus the persisted index entry a hydrated indexer replays. */
+function prunedSessionBranch(): any[] {
+  const t = Date.now();
+  const raw = "x".repeat(400);
+  return [
+    { type: "message", message: { role: "user", content: [{ type: "text", text: "read the file" }], timestamp: t - 3000 } },
+    {
+      type: "message",
+      message: { role: "assistant", content: [{ type: "toolCall", id: "tc1", name: "read", arguments: {} }], timestamp: t - 2000 },
+    },
+    {
+      type: "message",
+      message: { role: "toolResult", toolCallId: "tc1", toolName: "read", content: [{ type: "text", text: raw }], timestamp: t - 1000 },
+    },
+    {
+      type: "custom",
+      customType: "context-prune-index",
+      data: {
+        toolCalls: [
+          { toolCallId: "tc1", toolName: "read", args: {}, resultText: raw, isError: false, turnIndex: 0, timestamp: t - 1000 },
+        ],
+      },
+    },
+  ];
+}
+
+function branchMessages(ctx: any): any[] {
+  return ctx.sessionManager
+    .getBranch()
+    .filter((e: any) => e.type === "message")
+    .map((e: any) => e.message);
+}
+
+function tc1Text(messages: any[]): string {
+  const pruned = messages.find((m: any) => m.role === "toolResult" && m.toolCallId === "tc1");
+  expect(pruned).toBeDefined();
+  return Array.isArray(pruned.content) ? pruned.content.map((c: any) => c.text ?? "").join("\n") : String(pruned.content);
+}
+
+describe("context-hook hydration (load-order race)", () => {
+  it("hydrates config and index on demand when the context hook runs before session_start", async () => {
+    const { handlers, ctx } = await boot({ branch: prunedSessionBranch() });
+
+    const res = await handlers.get("context")!({ messages: branchMessages(ctx) }, ctx);
+
+    // Pruning at all needs BOTH halves of the fallback: the settings load
+    // (DEFAULT_CONFIG has enabled: false) and the index reconstruction (an empty
+    // index holds no record for tc1 to stub).
+    expect(res).toBeDefined();
+    const text = tc1Text(res.messages);
+    expect(text).toContain("context_tree_query");
+    expect(text).not.toContain("x".repeat(400));
+  });
+
+  it("does not prune when the on-demand settings load finds pruning disabled", async () => {
+    const { handlers, ctx } = await boot({ branch: prunedSessionBranch(), enabled: false });
+
+    const res = await handlers.get("context")!({ messages: branchMessages(ctx) }, ctx);
+
+    expect(res).toBeUndefined();
+  });
+
+  it("prunes identically when session_start runs first", async () => {
+    const { handlers, ctx } = await boot({ branch: prunedSessionBranch() });
+    await handlers.get("session_start")!({}, ctx);
+
+    const res = await handlers.get("context")!({ messages: branchMessages(ctx) }, ctx);
+
+    expect(res).toBeDefined();
+    expect(tc1Text(res.messages)).toContain("context_tree_query");
+  });
+
+  it("is idempotent: a fallback hydration followed by session_start yields the same prune", async () => {
+    const { handlers, ctx } = await boot({ branch: prunedSessionBranch() });
+
+    const messages = branchMessages(ctx);
+    const before = await handlers.get("context")!({ messages }, ctx);
+    await handlers.get("session_start")!({}, ctx);
+    const after = await handlers.get("context")!({ messages }, ctx);
+
+    expect(after).toBeDefined();
+    expect(tc1Text(after.messages)).toBe(tc1Text(before.messages));
   });
 });
